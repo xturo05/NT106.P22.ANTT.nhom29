@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Room - {{ room_name }}</title>
+    <style>
+        /* Reset và phông chữ */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #18181B; /* Nền tối giống Twitch */
+            color: #EFEEEF; /* Màu chữ sáng */
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Container chính */
+        #main-container {
+            display: flex;
+            flex: 1;
+            max-width: 100%;
+            height: calc(100vh - 50px); /* Trừ chiều cao header */
+        }
+
+        /* Header */
+        #chat-header {
+            background-color: #6441A5; /* Màu tím Twitch */
+            padding: 12px 20px;
+            color: #FFFFFF;
+            text-align: left;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        #chat-header h2 {
+            margin: 0;
+            font-size: 1.2em;
+            font-weight: 600;
+        }
+        #viewer-count {
+            font-size: 0.9em;
+            background-color: rgba(0,0,0,0.3);
+            padding: 4px 8px;
+            border-radius: 12px;
+        }
+
+        /* Khu vực video */
+        #video-section {
+            flex: 3;
+            display: flex;
+            flex-direction: column;
+            background-color: #0E0E10; /* Nền video tối */
+            padding: 10px;
+        }
+        #streamer-controls {
+            display: none;
+            background-color: #1F1F23;
+            padding: 10px;
+            text-align: center;
+            border-bottom: 1px solid #2C2C2E;
+        }
+        #streamer-controls button {
+            padding: 8px 16px;
+            margin: 0 5px;
+            border: none;
+            background-color: #6441A5;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        #streamer-controls button:hover {
+            background-color: #7D57C1;
+        }
+        #streamer-controls button:disabled {
+            background-color: #3A3A3C;
+            cursor: not-allowed;
+        }
+        #local-video {
+            max-width: 200px;
+            width: 100%;
+            border-radius: 4px;
+            margin-top: 10px;
+            background-color: #000;
+        }
+        #viewer-section {
+            flex: 1;
+            display: none;
+            text-align: center;
+            padding: 10px;
+        }
+        #remote-video {
+            width: 100%;
+            max-height: 80vh;
+            border-radius: 4px;
+            background-color: #000;
+            border: 1px solid #2C2C2E;
+        }
+
+        /* Khu vực chat */
+        #chat-container {
+            flex: 1;
+            max-width: 340px; /* Chiều rộng chat giống Twitch */
+            background-color: #1F1F23;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #2C2C2E;
+        }
+        #chat-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        #messages {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        #message-form {
+            display: flex;
+            padding: 10px;
+            border-top: 1px solid #2C2C2E;
+            background-color: #18181B;
+        }
+        #message-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #3A3A3C;
+            border-radius: 4px;
+            background-color: #2C2C2E;
+            color: #EFEEEF;
+            outline: none;
+            font-size: 0.9em;
+        }
+        #message-input:focus {
+            border-color: #6441A5;
+        }
+        #send-button {
+            padding: 8px 16px;
+            margin-left: 8px;
+            border: none;
+            background-color: #6441A5;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        #send-button:hover {
+            background-color: #7D57C1;
+        }
+        #send-button:disabled {
+            background-color: #3A3A3C;
+            cursor: not-allowed;
+        }
+
+        /* Tin nhắn */
+        .chat-message {
+            margin-bottom: 8px;
+            display: flex;
+            flex-direction: column;
+            max-width: 100%;
+            word-wrap: break-word;
+        }
+        .chat-message span:first-child {
+            font-weight: 600;
+            font-size: 0.9em;
+            color: #B0B0B3;
+            margin-bottom: 2px;
+        }
+        .message-bubble {
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 0.95em;
+            line-height: 1.4;
+        }
+        .my-message .message-bubble {
+            background-color: #6441A5;
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 2px;
+        }
+        .other-message .message-bubble {
+            background-color: #2C2C2E;
+            color: #EFEEEF;
+            margin-right: auto;
+            border-bottom-left-radius: 2px;
+        }
+        .system-message {
+            color: #B0B0B3;
+            font-style: italic;
+            font-size: 0.85em;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .timestamp {
+            color: #6F6F73;
+            font-size: 0.7em;
+            margin-top: 2px;
+        }
+        .my-message .timestamp {
+            text-align: right;
+        }
+        .other-message .timestamp {
+            text-align: left;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            #main-container {
+                flex-direction: column;
+            }
+            #chat-container {
+                max-width: 100%;
+                height: 40vh;
+            }
+            #video-section {
+                flex: none;
+                height: 60vh;
+            }
+            #remote-video {
+                max-height: 50vh;
+            }
+        }
+    </style>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+    <!-- Header -->
+    <div id="chat-header">
+        <h2>Phòng: <span id="room-name">{{ room_name|default:room_id }}</span></h2>
+        <span id="viewer-count">{{member_count}} người xem</span>
+    </div>
+
+    <!-- Container chính -->
+    <div id="main-container">
+        <!-- Khu vực video -->
+        <div id="video-section">
+            <div id="streamer-controls" style="display: none;">
+                <button id="start-camera-btn">Bật Camera</button>
+                <button id="start-screen-btn">Chia sẻ Màn hình</button>
+                <button id="stop-stream-btn" style="display: none;">Dừng Stream</button>
+                <video id="local-video" autoplay muted playsinline></video>
+            </div>
+            <div id="viewer-section" style="display: none;">
+                <video id="remote-video" autoplay playsinline controls></video>
+            </div>
+        </div>
+
+        <!-- Khu vực chat -->
+        <div id="chat-container">
+            <div id="chat-content">
+                <ul id="messages"></ul>
+            </div>
+            <form id="message-form" action="#">
+                <input type="text" id="message-input" placeholder="Nhập tin nhắn..." autocomplete="off" disabled>
+                <button type="submit" id="send-button" disabled>Gửi</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dữ liệu từ server -->
+    {{ room_id|json_script:"room-id-data" }}
+    {{ is_owner|json_script:"is-owner-data" }}
+
+    <!-- JavaScript -->
+    <script>
+        // Lấy user từ JWT token
+        function getOwner() {
+            const jwtToken = localStorage.getItem('access');
+            if (!jwtToken) {
+                console.log("[Chat Client] Không tìm thấy token.");
+                return null;
+            }
+            try {
+                const payloadBase64 = jwtToken.split('.')[1];
+                const payloadJson = atob(payloadBase64.replace(/-/g, '+').replace(/_/g, '/'));
+                const payload = JSON.parse(payloadJson);
+                console.log("[Chat Client] User ID hiện tại:", payload.user_id);
+                return payload.user_id;
+            } catch (e) {
+                console.error("[Chat Client] Lỗi parse token:", e);
+                return null;
+            }
+        }
+
+        // ----- Lấy các phần tử HTML -----
+        const messagesList = document.getElementById('messages');
+        const messageForm = document.getElementById('message-form');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const startCameraBtn = document.getElementById('start-camera-btn');
+        const startScreenBtn = document.getElementById('start-screen-btn');
+        const stopStreamBtn = document.getElementById('stop-stream-btn');
+        const localVideo = document.getElementById('local-video');
+        const remoteVideo = document.getElementById('remote-video');
+        const viewerSection = document.getElementById('viewer-section');
+
+        // ----- Cấu hình -----
+        const webSocketHostname = window.location.hostname;
+        const webSocketPort = 3001;
+        const webSocketURL = `ws://${webSocketHostname}:${webSocketPort}`;
+
+        // ----- Biến toàn cục -----
+        let socket = null;
+        let jwtToken = null;
+        let roomIdentifier = null;
+        let isOwner = false;
+        let currentUserId = null;
+        let localStream = null;
+        let peerConnection = null;
+        let viewerPeerConnection = null;
+
+        // --- Hàm lấy thông tin Room ID, Is Owner và Token ---
+        function getChatInfo() {
+            try {
+                roomIdentifier = JSON.parse(document.getElementById('room-id-data').textContent);
+                console.log("[Chat Client] Room Identifier:", roomIdentifier);
+            } catch (e) { console.error("Lỗi lấy Room ID:", e); roomIdentifier = null; }
+
+            try {
+                isOwner = JSON.parse(document.getElementById('is-owner-data').textContent);
+                console.log("[Chat Client] Is Owner:", isOwner);
+            } catch (e) { console.error("Lỗi lấy Is Owner:", e); isOwner = false; }
+
+            jwtToken = localStorage.getItem('access');
+            if (jwtToken) {
+                console.log("[Chat Client] Đã lấy token từ localStorage ('access').");
+                currentUserId = getOwner();
+                const roomOwnerId = "{{ room_owner_id }}";
+                if (currentUserId == roomOwnerId) {
+                        document.getElementById('streamer-controls').style.display = 'block';
+                        console.log("[Chat Client] Người dùng là chủ phòng.");
+                        isOwner = true;
+                    }
+                if (currentUserId && isOwner) {
+                    document.getElementById('streamer-controls').style.display = 'block';
+                    console.log("[Chat Client] Người dùng là chủ phòng.");
+                }
+            } else {
+                console.log("[Chat Client] Không tìm thấy token.");
+            }
+        }
+
+        // --- Hàm khởi tạo chính ---
+        function initializeChat() {
+            getChatInfo();
+            if (!roomIdentifier) { showError("Lỗi: Không xác định ID phòng."); }
+            else if (!jwtToken) { showError("Lỗi: Không tìm thấy token đăng nhập.", true); }
+            else {
+                connectWebSocket();
+            }
+        }
+
+        // --- Hàm kết nối WebSocket ---
+        function connectWebSocket() {
+            console.log(`[Chat Client] Đang kết nối tới ${webSocketURL} cho phòng ${roomIdentifier}...`);
+            appendSystemMessage(`Đang kết nối tới phòng ${roomIdentifier}...`);
+            socket = io(webSocketURL, { auth: { token: jwtToken } });
+            setupSocketListeners();
+            setupMessageSending();
+            enableChatInput(false);
+        }
+
+        // --- Thiết lập nút bấm cho streamer ---
+        function setupStreamerControls() {
+            startCameraBtn.onclick = () => {
+                console.log("[Streamer] Nhấn nút Bật Camera");
+                startStream({ video: true, audio: true });
+            };
+            startScreenBtn.onclick = () => {
+                console.log("[Streamer] Nhấn nút Chia sẻ Màn hình");
+                startStream({ video: { mediaSource: 'screen' }, audio: true });
+            };
+            stopStreamBtn.onclick = () => {
+                console.log("[Streamer] Nhấn nút Dừng Stream");
+                stopStream();
+            };
+
+            async function startStream(constraints) {
+                console.log("[Streamer] Yêu cầu media:", constraints);
+                try {
+                    if (localStream) { stopStream(); }
+                    if (constraints.video && constraints.video.mediaSource === 'screen') {
+                        localStream = await navigator.mediaDevices.getDisplayMedia(constraints);
+                    } else {
+                        localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    }
+                    console.log("[Streamer] Đã lấy local stream");
+                    localVideo.srcObject = localStream;
+                    localVideo.style.display = 'block';
+                    startCameraBtn.style.display = 'none';
+                    startScreenBtn.style.display = 'none';
+                    stopStreamBtn.style.display = 'inline-block';
+                    await createPeerConnectionAndSendOffer();
+                } catch (err) {
+                    console.error("[Streamer] Lỗi lấy media:", err);
+                    appendSystemMessage(`Lỗi truy cập media: ${err.message}. Vui lòng kiểm tra quyền camera/màn hình.`);
+                }
+            }
+
+            function stopStream() {
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    console.log("[Streamer] Đã dừng local stream");
+                }
+                if (peerConnection) {
+                    peerConnection.close();
+                    peerConnection = null;
+                    console.log("[Streamer] Đã đóng PeerConnection");
+                }
+                localVideo.srcObject = null;
+                localVideo.style.display = 'none';
+                startCameraBtn.style.display = 'inline-block';
+                startScreenBtn.style.display = 'inline-block';
+                stopStreamBtn.style.display = 'none';
+                if (socket && socket.connected) {
+                    socket.emit('stop_stream', { roomId: roomIdentifier });
+                }
+            }
+
+            async function createPeerConnectionAndSendOffer() {
+                if (!localStream || !socket || !socket.connected) {
+                    console.error("[Streamer] Không thể tạo PeerConnection: Thiếu stream hoặc socket.");
+                    return;
+                }
+                console.log("[Streamer] Tạo PeerConnection...");
+                peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                    console.log(`[Streamer] Đã thêm track ${track.kind}`);
+                });
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        console.log("[Streamer] Gửi ICE candidate");
+                        socket.emit('broadcast_ice_candidate', { roomId: roomIdentifier, candidate: event.candidate });
+                    }
+                };
+                peerConnection.ontrack = (event) => {
+                    console.log("[Streamer] Nhận track từ xa (không mong đợi):", event.track);
+                };
+                try {
+                    console.log("[Streamer] Tạo offer...");
+                    const offer = await peerConnection.createOffer();
+                    await peerConnection.setLocalDescription(offer);
+                    console.log("[Streamer] Gửi offer lên server...");
+                    socket.emit('broadcast_offer', { roomId: roomIdentifier, offer: offer });
+                } catch (error) {
+                    console.error("[Streamer] Lỗi tạo/gửi offer:", error);
+                    appendSystemMessage("Lỗi tạo phiên phát sóng.");
+                }
+            }
+        }
+
+        // --- Logic cho viewer để nhận stream ---
+        function startViewerConnection() {
+            if (viewerPeerConnection) {
+                viewerPeerConnection.close();
+                viewerPeerConnection = null;
+            }
+            console.log("[Viewer] Khởi tạo kết nối WebRTC để nhận stream...");
+            viewerPeerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+
+            viewerPeerConnection.ontrack = (event) => {
+                console.log("[Viewer] Nhận được track từ streamer:", event.track.kind);
+                if (remoteVideo.srcObject !== event.streams[0]) {
+                    remoteVideo.srcObject = event.streams[0];
+                    remoteVideo.style.display = 'block';
+                    viewerSection.style.display = 'block';
+                    console.log("[Viewer] Đã gắn stream vào remote-video.");
+                }
+            };
+
+            viewerPeerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    console.log("[Viewer] Gửi ICE candidate của viewer.");
+                    socket.emit('broadcast_ice_candidate', { roomId: roomIdentifier, candidate: event.candidate });
+                }
+            };
+        }
+
+        function stopViewerConnection() {
+            if (viewerPeerConnection) {
+                viewerPeerConnection.close();
+                viewerPeerConnection = null;
+                console.log("[Viewer] Đã đóng Viewer PeerConnection.");
+            }
+            if (remoteVideo) {
+                remoteVideo.srcObject = null;
+                remoteVideo.style.display = 'none';
+                viewerSection.style.display = 'none';
+                console.log("[Viewer] Đã xóa stream khỏi remote-video.");
+            }
+        }
+
+        // --- Thiết lập lắng nghe sự kiện Socket.IO ---
+        function setupSocketListeners() {
+            if (!socket) {
+                console.error("Lỗi setupSocketListeners: Biến 'socket' chưa được khởi tạo.");
+                return;
+            }
+
+            socket.on('connect', () => {
+                console.log(`[Chat Client] ✅ Kết nối WebSocket thành công! Socket ID: ${socket.id}`);
+                appendSystemMessage(`Đã kết nối tới phòng ${roomIdentifier}.`);
+                if (roomIdentifier) {
+                    socket.emit('joinRoom', roomIdentifier);
+                }
+                enableChatInput(true);
+                if (messageInput) {
+                    messageInput.focus();
+                }
+                if (isOwner) {
+                    console.log("[Chat Client] Thiết lập controls cho streamer.");
+                    setupStreamerControls();
+                } else {
+                    console.log("[Viewer] Sẵn sàng nhận stream nếu có.");
+                    viewerSection.style.display = 'block';
+                }
+            });
+
+            socket.on('connect_error', (err) => {
+                console.error(`[Chat Client] ❌ Lỗi kết nối WebSocket: ${err.message}`);
+                let friendlyMessage = `Lỗi kết nối: ${err.message}`;
+                if (err.message.includes('Authentication error')) {
+                    friendlyMessage = "Lỗi xác thực! Token không hợp lệ hoặc đã hết hạn.";
+                    localStorage.removeItem('access');
+                }
+                showError(friendlyMessage, err.message.includes('Authentication error'));
+            });
+
+            socket.on('disconnect', (reason) => {
+                console.warn(`[Chat Client] ⚪️ Đã ngắt kết nối WebSocket: ${reason}`);
+                appendSystemMessage(`Mất kết nối (${reason}). Đang thử kết nối lại...`);
+                enableChatInput(false);
+                stopViewerConnection();
+            });
+
+            socket.on('receiveMessage', (data) => {
+                if (data && data.message != null && data.timestamp != null) {
+                    appendChatMessage(data.userId, data.username, data.message, data.timestamp);
+                } else {
+                    console.warn("[Chat Client] Nhận được dữ liệu receiveMessage không hợp lệ:", data);
+                }
+            });
+
+            socket.on('userJoined', (data) => {
+                if (data && data.message) {
+                    appendSystemMessage(data.message);
+                }
+            });
+
+            socket.on('userLeft', (data) => {
+                if (data && data.message) {
+                    appendSystemMessage(data.message);
+                }
+            });
+
+            socket.on('error_message', (data) => {
+                if (data && data.message) {
+                    console.error("[Chat Client] Nhận được lỗi từ server:", data.message);
+                    appendSystemMessage(`Thông báo từ Server: ${data.message}`);
+                }
+            });
+
+            socket.on('stream_started', (data) => {
+                if (data && data.streamerName) {
+                    console.log(`[Viewer] ${data.streamerName} đã bắt đầu stream.`);
+                    appendSystemMessage(`${data.streamerName} đã bắt đầu stream!`);
+                    if (!isOwner) {
+                        startViewerConnection();
+                    }
+                }
+            });
+
+            socket.on('receive_offer', async (data) => {
+                if (!isOwner && viewerPeerConnection && data && data.offer) {
+                    console.log("[Viewer] Nhận được Offer SDP từ server.");
+                    try {
+                        await viewerPeerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                        console.log("[Viewer] Đã set Remote Description (Offer).");
+                        const answer = await viewerPeerConnection.createAnswer();
+                        await viewerPeerConnection.setLocalDescription(answer);
+                        console.log("[Viewer] Đã tạo và set Answer SDP.");
+                        socket.emit('broadcast_answer', { roomId: roomIdentifier, answer: answer });
+                        console.log("[Viewer] Đã gửi Answer SDP về server.");
+                    } catch (error) {
+                        console.error("[Viewer] Lỗi khi xử lý Offer/Answer:", error);
+                        appendSystemMessage("Lỗi kết nối tới stream.");
+                    }
+                }
+            });
+
+            socket.on('broadcast_answer', (data) => {
+                if (isOwner && peerConnection && data && data.answer) {
+                    console.log("[Streamer] Nhận được Answer SDP từ server.");
+                    peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer))
+                        .then(() => console.log("[Streamer] Đã set Remote Description (Answer) thành công."))
+                        .catch(e => console.error("[Streamer] Lỗi khi set Remote Description (Answer):", e));
+                }
+            });
+
+            socket.on('receive_ice_candidate', (data) => {
+                const targetPeerConnection = isOwner ? peerConnection : viewerPeerConnection;
+                if (targetPeerConnection && data && data.candidate) {
+                    console.log("[Chat Client] Nhận được ICE candidate từ server/peer.");
+                    targetPeerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
+                        .then(() => console.log("[Chat Client] Đã thêm ICE candidate."))
+                        .catch(e => console.error("[Chat Client] Lỗi khi thêm ICE candidate:", e));
+                }
+            });
+
+            socket.on('stream_stopped', (data) => {
+                console.log(`[Viewer] Stream đã kết thúc.`);
+                appendSystemMessage(`Stream đã kết thúc.`);
+                if (!isOwner) {
+                    stopViewerConnection();
+                }
+            });
+        }
+
+        // --- Thiết lập gửi tin nhắn ---
+        function setupMessageSending() {
+            if (!messageForm) {
+                console.error("Lỗi setupMessageSending: Không tìm thấy form với id 'message-form'.");
+                return;
+            }
+
+            messageForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                if (!messageInput) {
+                    console.error("Lỗi gửi tin nhắn: Không tìm thấy input với id 'message-input'.");
+                    return;
+                }
+
+                const message = messageInput.value.trim();
+                if (socket && socket.connected && message && roomIdentifier) {
+                    console.log("[Chat Client] Gửi tin nhắn:", message);
+                    socket.emit('sendMessage', { room: roomIdentifier, message: message });
+                    messageInput.value = '';
+                    messageInput.focus();
+                } else if (!socket || !socket.connected) {
+                    console.warn("[Chat Client] Không thể gửi tin nhắn: Chưa kết nối tới server.");
+                    appendSystemMessage("Bạn chưa kết nối tới server chat!");
+                } else if (!message) {
+                    messageInput.focus();
+                }
+            });
+        }
+
+        // --- Các hàm hỗ trợ ---
+        function enableChatInput(isEnabled) {
+            if (messageInput) messageInput.disabled = !isEnabled;
+            if (sendButton) sendButton.disabled = !isEnabled;
+        }
+
+        function appendChatMessage(userId, username, message, timestamp) {
+            if (!messagesList) return;
+            const item = document.createElement('li');
+            item.classList.add('chat-message');
+            item.classList.add((currentUserId && userId === currentUserId) ? 'my-message' : 'other-message');
+            let timeString = '??:??';
+            try {
+                timeString = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } catch (e) {}
+            const usernameSpan = (currentUserId && userId !== currentUserId && username) ? `<span>${escapeHtml(username)}</span>` : '';
+            item.innerHTML = `${usernameSpan}<div class="message-bubble">${escapeHtml(message)}</div><span class="timestamp">${escapeHtml(timeString)}</span>`;
+            messagesList.appendChild(item);
+            scrollToBottom();
+        }
+
+        function appendSystemMessage(message) {
+            if (!messagesList) return;
+            const item = document.createElement('li');
+            item.classList.add('system-message');
+            item.textContent = escapeHtml(message);
+            messagesList.appendChild(item);
+            scrollToBottom();
+        }
+
+        function showError(message, isFatal = false) {
+            const errorMessage = `Lỗi: ${message}`;
+            console.error("[Chat Client Error]", errorMessage);
+            appendSystemMessage(errorMessage);
+            if (isFatal) {
+                enableChatInput(false);
+                console.log("Lỗi nghiêm trọng, xem xét chuyển hướng...");
+            }
+        }
+
+        function scrollToBottom() {
+            if (messagesList) {
+                setTimeout(() => { messagesList.scrollTop = messagesList.scrollHeight; }, 50);
+            }
+        }
+
+        function escapeHtml(unsafe) {
+            if (unsafe == null) return '';
+            const safeString = String(unsafe);
+            return safeString.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        // --- Chạy khởi tạo ---
+        document.addEventListener('DOMContentLoaded', initializeChat);
+    </script>
+</body>
+</html>

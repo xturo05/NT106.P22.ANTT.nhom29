@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trang Chủ</title>
+    {% load static %} <meta charset="UTF-8">
+    <script>
+        // --- Hàm gọi API (Giữ nguyên hàm callApi của bạn) ---
+        async function callApi(url, method = 'GET', token = null, body = null) {
+            // (Code hàm callApi của bạn ở đây - đảm bảo nó hoạt động đúng
+            // và xử lý refresh token nếu cần)
+             let headers = {
+                 'Content-Type': 'application/json',
+             };
+             if (token) {
+                 headers['Authorization'] = `Bearer ${token}`;
+             }
+
+             // Cần try...catch để xử lý lỗi mạng hoặc lỗi JSON parse
+             try {
+                 let res = await fetch(url, {
+                     method: method,
+                     headers: headers,
+                     body: method !== 'GET' && body ? JSON.stringify(body) : null,
+                 });
+
+                // Xử lý refresh token (ví dụ)
+                 if (res.status === 401 && localStorage.getItem('refresh')) {
+                    console.log("Access token hết hạn, đang thử refresh...");
+                    // const newToken = await refreshToken(); // Gọi hàm refresh token của bạn
+                    // if (newToken) {
+                    //     localStorage.setItem('access', newToken); // Lưu token mới
+                    //     // Gọi lại API với token mới
+                    //     return await callApi(url, method, newToken, body);
+                    // } else {
+                    //     // Xử lý khi refresh thất bại (ví dụ: logout)
+                    //     console.error("Refresh token thất bại.");
+                    //     localStorage.removeItem('access');
+                    //     localStorage.removeItem('refresh');
+                    //     // Chuyển hướng về login
+                    //     // window.location.href = '/login';
+                    //     return null; // Hoặc throw lỗi
+                    // }
+                 }
+
+                 if (!res.ok) {
+                    // Ném lỗi nếu response không thành công (status khác 2xx)
+                    const errorData = await res.json().catch(() => ({ detail: 'Lỗi không xác định' }));
+                    console.error(`Lỗi API ${res.status}:`, errorData);
+                    throw new Error(errorData.detail || `Lỗi ${res.status}`);
+                 }
+
+                 // Xử lý trường hợp không có nội dung (status 204 No Content)
+                 if (res.status === 204) {
+                    return null;
+                 }
+
+                // Parse JSON cho các trường hợp còn lại
+                 return res.json();
+
+             } catch (error) {
+                console.error("Lỗi trong hàm callApi:", error);
+                // Có thể hiển thị lỗi cho người dùng hoặc xử lý thêm
+                alert(`Đã xảy ra lỗi: ${error.message}`);
+                return null; // Trả về null hoặc throw lỗi tùy logic
+             }
+        }
+
+        // --- Các hàm xử lý nghiệp vụ ---
+        async function getProfile() {
+            const token = localStorage.getItem('access');
+            if (!token) {
+                document.querySelector('h1').innerText = 'Vui lòng đăng nhập';
+                // Có thể ẩn các nút hoặc chuyển hướng về trang login
+                return;
+            }
+            const data = await callApi('http://localhost:8000/me/', 'GET', token); // Thay URL API nếu cần
+            if (data && data.username) {
+                document.querySelector('h1').innerText = `Xin chào, ${data.username}!`;
+            } else {
+                 document.querySelector('h1').innerText = 'Lỗi tải thông tin user';
+                 // Xử lý thêm nếu cần (ví dụ: logout nếu token sai)
+            }
+        }
+
+        async function createRoom() {
+            const token = localStorage.getItem('access');
+            if (!token) return alert("Bạn cần đăng nhập để tạo phòng!");
+
+            const roomName = prompt("Nhập tên phòng bạn muốn tạo:");
+            if (!roomName) return; // Người dùng hủy prompt
+
+            const body = {
+                name: roomName
+            };
+            const data = await callApi('http://localhost:8000/rooms/create/', 'POST', token, body); // Thay URL API nếu cần
+            if (data && data.id) {
+                alert(`Tạo phòng "${data.name}" thành công! ID: ${data.id}`);
+                // Chuyển hướng sang trang chat (Express) với ID phòng, không kèm token
+                window.location.href = `/chat/${data.id}/`;
+            } else {
+                // callApi đã xử lý alert lỗi
+                // alert("Tạo phòng thất bại!");
+            }
+        }
+
+        async function joinRoom(){
+            const token = localStorage.getItem('access');
+            if (!token) return alert("Bạn cần đăng nhập để tham gia phòng!");
+
+            const roomId = prompt("Nhập ID phòng bạn muốn tham gia:");
+            if (!roomId) return; // Người dùng hủy prompt
+
+            // Chuyển hướng sang trang chat (Express) với ID phòng, không kèm token
+            window.location.href = `http://localhost:3001/chat/${roomId}`;
+        }
+
+        async function listRooms() {
+            const token = localStorage.getItem('access');
+            const roomListElement = document.getElementById('room-list');
+            roomListElement.innerHTML = '<li>Đang tải danh sách...</li>'; // Thông báo đang tải
+
+            if (!token) {
+                 roomListElement.innerHTML = '<li>Vui lòng đăng nhập để xem phòng.</li>';
+                 return;
+            }
+
+            const rooms = await callApi('http://localhost:8000/rooms/', 'GET', token); // Thay URL API nếu cần
+
+            if (rooms && Array.isArray(rooms)) {
+                 let html = '';
+                 if (rooms.length === 0) {
+                    html = '<li>Chưa có phòng nào được tạo.</li>';
+                 } else {
+                    rooms.forEach(room => {
+                        // Thêm nút Join vào mỗi phòng
+                        html += `<li>${room.name} (ID: ${room.id}) <button onclick="directJoinRoom('${room.id}')">Join</button></li>`;
+                    });
+                 }
+                 roomListElement.innerHTML = html;
+            } else {
+                 roomListElement.innerHTML = '<li>Lỗi tải danh sách phòng.</li>';
+            }
+        }
+
+        // Hàm join trực tiếp từ nút bấm trong danh sách
+        function directJoinRoom(roomId) {
+            const token = localStorage.getItem('access');
+            if (!token) return alert("Bạn cần đăng nhập để tham gia phòng!");
+            window.location.href = `http://localhost:3001/chat/${roomId}`;
+        }
+
+
+        // --- Chạy các hàm khi tải trang ---
+        // Đảm bảo DOM đã sẵn sàng trước khi thao tác
+        document.addEventListener('DOMContentLoaded', () => {
+             getProfile();
+             listRooms();
+        });
+
+    </script>
+</head>
+<body>
+    <h1>Loading...</h1>
+
+    <button onclick="createRoom()">Tạo Phòng Mới</button>
+    <button onclick="joinRoom()">Tham Gia Phòng (Nhập ID)</button>
+
+    <h2>Danh sách phòng hiện có:</h2>
+    <ul id="room-list"></ul>
+
+    <script>
+        // function logout() {
+        //     localStorage.removeItem('access');
+        //     localStorage.removeItem('refresh');
+        //     window.location.href = '/login'; // Hoặc trang chủ
+        // }
+    </script>
+</body>
+</html>
