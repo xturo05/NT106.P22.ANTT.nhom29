@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Room</title>
+    <style>
+        /* Copy/paste CSS styles from previous example */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #f0f2f5; }
+        #messages { list-style: none; padding: 0; margin: 0 0 10px 0; flex-grow: 1; overflow-y: scroll; padding: 10px; }
+        #chat-container { width: 95%; max-width: 800px; background-color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); border-radius: 8px; display: flex; flex-direction: column; height: 90vh; max-height: 700px;}
+        #chat-header { padding: 12px 20px; background-color: #1877f2; color: white; border-radius: 8px 8px 0 0; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
+        #chat-header h2 { margin: 0; font-size: 1.1em;}
+        #chat-content { flex-grow: 1; padding: 0; display: flex; flex-direction: column; overflow: hidden;} /* Remove padding */
+        #message-form { display: flex; padding: 10px 15px; border-top: 1px solid #ddd;}
+        #message-input { flex-grow: 1; padding: 10px 15px; border: 1px solid #ccc; border-radius: 20px; outline: none; margin-right: 10px; }
+        #send-button { padding: 10px 15px; border: none; background-color: #1877f2; color: white; border-radius: 20px; cursor: pointer; font-weight: bold; transition: background-color 0.2s;}
+        #send-button:hover { background-color: #166fe5;}
+        #send-button:disabled { background-color: #bdc1c5; cursor: not-allowed;}
+        #message-input:disabled { background-color: #f0f2f5; }
+        .chat-message { margin-bottom: 12px; display: flex; flex-direction: column; max-width: 70%; word-wrap: break-word; clear: both; }
+        .chat-message span:first-child { font-weight: 600; margin-bottom: 2px; font-size: 0.9em; color: #65676b;} /* Username style */
+        .message-bubble { padding: 8px 12px; border-radius: 18px; }
+        .my-message { align-self: flex-end; }
+        .my-message .message-bubble { background-color: #0084ff; color: white; border-bottom-right-radius: 4px; }
+        .other-message { align-self: flex-start; }
+        .other-message .message-bubble { background-color: #e4e6eb; color: #050505; border-bottom-left-radius: 4px; }
+        .system-message { color: #65676b; font-style: italic; font-size: 0.85em; text-align: center; margin: 15px 0; width: 100%; clear: both; }
+        .timestamp { color: #65676b; font-size: 0.7em; text-align: inherit; margin-top: 4px; align-self: inherit; } /* Align timestamp with bubble */
+        .my-message .timestamp { text-align: right; align-self: flex-end;}
+        .other-message .timestamp { text-align: left; align-self: flex-start;}
+    </style>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+    <div id="chat-container">
+        <div id="chat-header">
+            <h2>Phòng Chat: <span id="room-name">Đang tải...</span></h2>
+        </div>
+        <div id="chat-content">
+            <ul id="messages">
+                </ul>
+        </div>
+        <form id="message-form" action="#">
+            <input type="text" id="message-input" placeholder="Nhập tin nhắn..." autocomplete="off" disabled>
+            <button type="submit" id="send-button" disabled>Gửi</button>
+        </form>
+    </div>
+
+    <script>
+        // ----- Lấy các phần tử HTML -----
+        const messagesList = document.getElementById('messages');
+        const messageForm = document.getElementById('message-form');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const roomNameSpan = document.getElementById('room-name');
+
+        // ----- Cấu hình -----
+        const webSocketHostname = window.location.hostname; // 'localhost'
+        const webSocketPort = 3001; // Port của server Express
+        const webSocketURL = `ws://<span class="math-inline">\{webSocketHostname\}\:</span>{webSocketPort}`; // Hoặc wss:// nếu dùng HTTPS
+
+        // ----- Biến toàn cục -----
+        let socket = null;
+        let jwtToken = null;
+        let roomIdentifier = null;
+        let currentUserId = null; // Lấy từ token payload
+
+        // --- Hàm lấy thông tin Room ID và Token ---
+        function extractInfoFromUrlAndStorage() {
+            // 1. Lấy Room ID từ đường dẫn URL (ví dụ: /chat/room123)
+            const pathSegments = window.location.pathname.split('/');
+            roomIdentifier = pathSegments.pop() || pathSegments.pop(); // Lấy phần tử cuối cùng
+            if (roomNameSpan) {
+                roomNameSpan.textContent = roomIdentifier ? roomIdentifier : "Lỗi ID Phòng";
+            }
+            console.log("[Chat Client] Room Identifier:", roomIdentifier);
+
+            // 2. Lấy Token: Ưu tiên từ URL Hash, sau đó từ localStorage
+            const hash = window.location.hash;
+            const tokenKeyInStorage = 'accessTokenForPort3000'; // Key riêng cho localStorage của port 3000
+
+            if (hash && hash.startsWith('#token=')) {
+                jwtToken = hash.substring(7); // Bỏ '#token='
+                console.log("[Chat Client] Đã lấy token từ URL hash.");
+                localStorage.setItem(tokenKeyInStorage, jwtToken); // Lưu vào localStorage (của port 3000)
+                history.replaceState(null, null, window.location.pathname + window.location.search); // Xóa hash khỏi URL
+                console.log("[Chat Client] Đã lưu token vào localStorage và xóa hash.");
+            } else {
+                jwtToken = localStorage.getItem(tokenKeyInStorage);
+                if (jwtToken) {
+                    console.log("[Chat Client] Đã lấy token từ localStorage (cho port 3000).");
+                } else {
+                    console.log("[Chat Client] Không tìm thấy token trong URL hash hoặc localStorage.");
+                }
+            }
+
+            // 3. Parse User ID từ token
+            if (jwtToken) {
+                try {
+                    const payloadBase64 = jwtToken.split('.')[1];
+                    const payloadJson = atob(payloadBase64.replace(/-/g, '+').replace(/_/g, '/'));
+                    const payload = JSON.parse(payloadJson);
+                    currentUserId = payload.user_id;
+                    console.log("[Chat Client] User ID hiện tại (từ token):", currentUserId);
+                } catch (e) {
+                    console.error("[Chat Client] Lỗi parse token:", e);
+                    jwtToken = null; // Reset token nếu không hợp lệ
+                }
+            }
+        }
+
+        // --- Hàm khởi tạo chính ---
+        function initializeChat() {
+            extractInfoFromUrlAndStorage(); // Lấy thông tin
+
+            if (!roomIdentifier) {
+                showError("Lỗi: Không xác định được ID phòng chat từ URL.");
+            } else if (!jwtToken) {
+                // Lỗi này không nên xảy ra nếu logic ở home.html đúng
+                showError("Lỗi: Không tìm thấy thông tin đăng nhập (token). Vui lòng quay lại trang chủ.", true);
+            } else {
+                connectWebSocket(); // Kết nối nếu có đủ thông tin
+            }
+        }
+
+        // --- Hàm kết nối WebSocket ---
+        function connectWebSocket() {
+            console.log(`[Chat Client] Đang kết nối tới ${webSocketURL} cho phòng ${roomIdentifier}...`);
+            appendSystemMessage(`Đang kết nối tới phòng ${roomIdentifier}...`);
+            socket = io(webSocketURL, { auth: { token: jwtToken } }); // Kết nối và xác thực
+            setupSocketListeners();
+            setupMessageSending();
+            enableChatInput(false); // Tắt input cho đến khi kết nối thành công
+        }
+
+        // --- Hàm cài đặt các trình lắng nghe sự kiện ---
+        function setupSocketListeners() {
+            if (!socket) return;
+            socket.on('connect', () => {
+                console.log(`[Chat Client] ✅ Kết nối thành công! ID: ${socket.id}`);
+                appendSystemMessage(`Đã kết nối tới phòng ${roomIdentifier}.`);
+                socket.emit('joinRoom', roomIdentifier);
+                enableChatInput(true); messageInput.focus();
+            });
+            socket.on('connect_error', (err) => {
+                console.error(`[Chat Client] ❌ Lỗi kết nối: ${err.message}`);
+                let msg = `Lỗi kết nối: ${err.message}`;
+                if (err.message.includes('Authentication error')) {
+                    msg = "Lỗi xác thực! Token không hợp lệ hoặc hết hạn.";
+                    localStorage.removeItem('accessTokenForPort3000'); // Xóa token lỗi
+                }
+                showError(msg, err.message.includes('Authentication error')); // Lỗi auth là nghiêm trọng
+            });
+            socket.on('disconnect', (reason) => {
+                console.warn(`[Chat Client] ⚪️ Đã ngắt kết nối: ${reason}`);
+                appendSystemMessage(`Mất kết nối (${reason}). Đang thử kết nối lại...`);
+                enableChatInput(false);
+            });
+            socket.on('receiveMessage', (data) => appendChatMessage(data.userId, data.username, data.message, data.timestamp));
+            socket.on('userJoined', (data) => appendSystemMessage(`${data.username} đã tham gia.`));
+            socket.on('userLeft', (data) => appendSystemMessage(`${data.username} đã rời phòng.`));
+            socket.on('error_message', (data) => { // Lắng nghe lỗi tùy chỉnh từ server
+                console.error("[Chat Client] Lỗi từ server:", data.message);
+                appendSystemMessage(`Lỗi Server: ${data.message}`);
+            });
+        }
+
+        // --- Hàm cài đặt việc gửi tin nhắn ---
+        function setupMessageSending() {
+             if (!messageForm) return;
+             messageForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const message = messageInput.value.trim();
+                if (socket && socket.connected && message && roomIdentifier) {
+                    socket.emit('sendMessage', { room: roomIdentifier, message: message });
+                    messageInput.value = ''; messageInput.focus();
+                } else if (!socket || !socket.connected) { showError("Chưa kết nối tới server chat!", false); }
+            });
+        }
+
+        // --- Các hàm tiện ích ---
+        function enableChatInput(isEnabled) {
+            if(messageInput) messageInput.disabled = !isEnabled;
+            if(sendButton) sendButton.disabled = !isEnabled;
+        }
+        function appendChatMessage(userId, username, message, timestamp) {
+            if(!messagesList) return;
+            const item = document.createElement('li');
+            item.classList.add('chat-message');
+            item.classList.add((currentUserId && userId === currentUserId) ? 'my-message' : 'other-message');
+            const timeString = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            item.innerHTML = `
+                ${(currentUserId && userId !== currentUserId) ? `<span>${escapeHtml(username)}</span>` : ''}
+                <div class="message-bubble"><span class="math-inline">\{escapeHtml\(message\)\}</div\>
+<span class\="timestamp"\></span>{timeString}</span>`;
+            messagesList.appendChild(item);
+            scrollToBottom();
+        }
+        function appendSystemMessage(message) {
+             if(!messagesList) return;
+            const item = document.createElement('li');
+            item.classList.add('system-message');
+            item.textContent = escapeHtml(message);
+            messagesList.appendChild(item);
+            scrollToBottom();
+        }
+         function showError(message, isFatal = false) {
+            console.error(message);
+            appendSystemMessage(message);
+            alert(message);
+            enableChatInput(false);
+            if (isFatal) { console.log("Lỗi nghiêm trọng, xem xét chuyển hướng..."); }
+        }
+        function scrollToBottom() { if(messagesList) { messagesList.scrollTop = messagesList.scrollHeight; } }
+        function escapeHtml(unsafe) {
+             if (typeof unsafe !== 'string') return unsafe;
+             return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g,
